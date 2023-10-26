@@ -7,7 +7,7 @@ import pyroomacoustics as pra
 
 from lib.custom import create_doa_object, perform_fft_on_frames
 from src.file_io import load_config, load_signal_from_wav, write_signal_to_wav
-from src.visualization_tools import plot_music_spectrum
+from src.visualization_tools import plot_music_spectrum, plot_reverberation_wall
 
 
 class AudioLoader:
@@ -101,6 +101,7 @@ class Room:
             self.room_noise_template.add_source(position, signal=signal)
 
     def simulate(self, output_dir):
+        plot_reverberation_wall(self.room_source, f"{output_dir}/reverberation_wall.png")
         self.room_source.simulate(snr=self.snr)
         self.room_noise_template.simulate(snr=self.snr)
         self.room_source.plot()

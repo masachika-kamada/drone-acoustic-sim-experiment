@@ -81,3 +81,21 @@ def plot_music_spectrum(doa,
     if display:
         plt.show()
     plt.close()
+
+
+def plot_reverberation_wall(room: pra.Room, filename: str) -> None:
+    fig, ax = plt.subplots()
+    walls = room.walls
+    for wall in walls:
+        xs, ys = wall.corners
+        absorption = wall.absorption
+
+        if np.array(absorption).mean() == 1:
+            color = "black"
+        else:
+            color = "red"
+
+        ax.plot(xs, ys, color=color)
+
+    plt.savefig(filename)
+    plt.close(fig)
