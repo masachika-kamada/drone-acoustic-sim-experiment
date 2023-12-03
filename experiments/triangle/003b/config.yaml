@@ -67,5 +67,5 @@ fft:
 
 doa:
   method: "GEVD-MUSIC"  # or "MUSIC"
-  source_noise_thresh: 150
+  source_noise_thresh: 15
   freq_range: [300, 3500]

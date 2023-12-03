@@ -187,7 +187,7 @@ def main(config, output_dir):
         X_noise=X_noise,
         output_dir=output_dir,
     )
-    doa.locate_sources(X_source, freq_range=config_doa["freq_range"], auto_identify=True, use_noise=True)
+    doa.locate_sources(X_source, freq_range=config_doa["freq_range"], auto_identify=True)
     plot_music_spectrum(doa, output_dir=output_dir)
 
 
