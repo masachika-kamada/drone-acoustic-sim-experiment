@@ -1,16 +1,16 @@
 import numpy as np
-import scipy
+import pygsvd
 
 from .music import *
 
 
-class GevdMUSIC(MUSIC):
+class GsvdMUSIC(MUSIC):
     """
-    Class to apply the Generalized Eigenvalue Decomposition (GEVD) based MUSIC
-    (GEVD-MUSIC) direction-of-arrival (DoA) for a particular microphone array,
+    Class to apply the Generalized Singular Value Decomposition (GSVD) based MUSIC
+    (GSVD-MUSIC) direction-of-arrival (DoA) for a particular microphone array,
     extending the capabilities of the original MUSIC algorithm.
 
-    .. note:: Run locate_source() to apply the GEVD-MUSIC algorithm.
+    .. note:: Run locate_source() to apply the GSVD-MUSIC algorithm.
 
     Parameters
     ----------
@@ -97,13 +97,17 @@ class GevdMUSIC(MUSIC):
 
     def _extract_noise_subspace(self, R, K, display, save, auto_identify):
         # Initialize
-        decomposed_values = np.empty(R.shape[:2], dtype=complex)
-        decomposed_vectors = np.empty(R.shape, dtype=complex)
+        C = np.empty(R.shape[:2], dtype=complex)
+        S = np.empty(R.shape[:2], dtype=complex)
+        X = np.empty(R.shape, dtype=complex)
 
-        # Step 1: Eigenvalue decomposition
+        # Step 1: Generalized Singular Value Decomposition
         for i in range(self.num_freq):
-            decomposed_values[i], decomposed_vectors[i] = scipy.linalg.eigh(R[i], K[i])
-        decomposed_values = np.real(decomposed_values)
+            C[i], S[i], X[i], u, v = pygsvd.gsvd(R[i], K[i])
+
+        decomposed_values = np.real(C) / np.real(S)
+        decomposed_values = decomposed_values[::-1, ::-1]
+        decomposed_vectors = X[..., ::-1]
 
         # Step 2: Display if flag is True
         if display or save:

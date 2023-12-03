@@ -79,7 +79,7 @@ class MUSIC(DOA):
         self.source_noise_thresh = source_noise_thresh
         self.output_dir = output_dir
 
-    def _process(self, X, display, save, auto_identify, use_noise):
+    def _process(self, X, display, save, auto_identify):
         """
         Perform MUSIC for given frame in order to estimate steered response
         spectrum.
@@ -88,11 +88,11 @@ class MUSIC(DOA):
         self.spatial_spectrum = np.zeros((self.num_freq, self.grid.n_points))
         R = self._compute_correlation_matricesvec(X)
         # subspace decomposition
-        eigvecs_s, eigvecs_n = self._extract_subspaces(R, display=display, save=save,
+        noise_subspace = self._extract_noise_subspace(R, display=display, save=save,
                                                        auto_identify=auto_identify)
 
         # compute spatial spectrum
-        self.spatial_spectrum = self._compute_spatial_spectrum(eigvecs_s, eigvecs_n, use_noise)
+        self.spatial_spectrum = self._compute_spatial_spectrum(noise_subspace)
 
         if self.frequency_normalization:
             self._apply_frequency_normalization()
@@ -109,83 +109,76 @@ class MUSIC(DOA):
         C_hat = np.mean(C_hat, axis=0)
         return C_hat
 
-    def _extract_subspaces(self, R, display, save, auto_identify):
+    def _extract_noise_subspace(self, R, display, save, auto_identify):
         # Step 1: Eigenvalue decomposition
         # Eigenvalues and eigenvectors are returned in ascending order; no need to sort.
-        eigvals, eigvecs = np.linalg.eigh(R)
+        decomposed_values, decomposed_vectors = np.linalg.eigh(R)
 
         # Step 2: Display if flag is True
         if display or save:
-            self._plot_eigvals(eigvals, display, save)
+            self._plot_decomposed_values(decomposed_values, display, save)
 
         # Step 3: Auto-identify source and noise if flag is True
         if auto_identify:
-            self.num_src = self._auto_identify(eigvals, save)
+            self.num_src = self._auto_identify(decomposed_values, save)
 
         # Step 4: Extract subspace
-        eigvecs_n = eigvecs[..., :-self.num_src]
-        eigvecs_s = eigvecs[..., -self.num_src:]
+        noise_subspace = decomposed_vectors[..., :-self.num_src]
 
-        return eigvecs_s, eigvecs_n
+        return noise_subspace
 
-    def _plot_eigvals(self, eigvals, display, save):
+    def _plot_decomposed_values(self, decomposed_values, display, save):
         import matplotlib.pyplot as plt
 
-        # Visualize the magnitude of eigenvalues
+        # Visualize the magnitude of decomposed values
         fig, axes = plt.subplots(1, 8, figsize=(15, 8), sharey=True)
         for i in range(8):
-            axes[i].plot(eigvals[..., i], label=f"Eigenvalue {i+1}", marker="o", linestyle="")
-            axes[i].set_title(f"Eigenvalue {i+1}")
+            axes[i].plot(decomposed_values[..., i], label=f"Value {i+1}", marker="o", linestyle="")
+            axes[i].set_title(f"Value {i+1}")
             axes[i].set_xlabel("Row Index")
-            axes[i].set_ylim([np.min(eigvals), np.max(eigvals)])
+            axes[i].set_ylim([np.min(decomposed_values), np.max(decomposed_values)])
 
-        axes[0].set_ylabel("Eigenvalue Magnitude")
-        plt.suptitle("Distribution of Eigenvalue Magnitudes Across Rows")
+        axes[0].set_ylabel("Value Magnitude")
+        plt.suptitle("Distribution of Decomposed Values Magnitudes Across Rows")
 
-        if save:  # saveを先にしないと、show()で消える
-            plt.savefig(f"{self.output_dir}/eigenvalues.png")
+        if save:
+            plt.savefig(f"{self.output_dir}/decomposed_values.png")
         if display:
             plt.show()
         plt.close()
 
-    def _auto_identify(self, eigvals, save=True):
+    def _auto_identify(self, decomposed_values, save=True):
         """
-        Automatically identify the number of sources based on the eigenvalues
+        Automatically identify the number of sources based on the decomposed values
         of the correlation matrix.
         """
-        eigvals_max = np.max(eigvals, axis=0)
-        # Compute the eigenvalue ratio between consecutive elements
-        eigvals_ratio = eigvals_max[1:] / eigvals_max[:-1]
+        values_max = np.max(decomposed_values, axis=0)
+        # Compute the ratio between consecutive decomposed values
+        values_ratio = values_max[1:] / values_max[:-1]
 
-        print(f"Eigenvalue ratio: {eigvals_ratio}")
-        # save the eigenvalue ratio
+        print(f"Decomposed values ratio: {values_ratio}")
+        # save the decomposed values ratio
         if save:
-            np.savetxt(f"{self.output_dir}/eigenvalue_ratio.txt", eigvals_ratio)
+            np.savetxt(f"{self.output_dir}/decomposed_values_ratio.txt", values_ratio)
 
         # Find the index where the ratio exceeds the threshold or return the last index
-        index = np.argmax(eigvals_ratio > self.source_noise_thresh)
-        num_sources = len(eigvals_ratio) - index if index else len(eigvals_ratio)
+        index = np.argmax(values_ratio > self.source_noise_thresh)
+        num_sources = len(values_ratio) - index if index else len(values_ratio)
         return num_sources
 
-    def _compute_spatial_spectrum(self, eigvecs_s, eigvecs_n, use_noise):
-        if use_noise:
-            spatial_spectrum = np.zeros((self.num_freq, self.grid.n_points))
-            self.steering_vector = self._compute_steering_vector()
-            for f in range(self.num_freq):
-                steering_vector_f = self.steering_vector[f, :, :]
-                noise_eigvecs_f = eigvecs_n[f, :, :]
-                # Calculate the MUSIC spectrum for each angle and frequency bin
-                vector_norm_squared = np.abs(np.sum(np.conj(steering_vector_f) * steering_vector_f, axis=1))
-                noise_projection = np.abs(np.sum(
-                    np.conj(steering_vector_f) @ noise_eigvecs_f * (noise_eigvecs_f.conj().T @ steering_vector_f.T).T,
-                    axis=1))
-                spatial_spectrum[f, :] = vector_norm_squared / noise_projection
-            return spatial_spectrum.T
-        else:
-            identity = np.zeros((self.num_freq, self.M, self.M))
-            identity[:, list(np.arange(self.M)), list(np.arange(self.M))] = 1
-            cross = identity - np.matmul(eigvecs_s, np.transpose(np.conjugate(eigvecs_s), (0, 2, 1)))
-            return self._compute_spatial_spectrumvec(cross)
+    def _compute_spatial_spectrum(self, noise_subspace):
+        spatial_spectrum = np.zeros((self.num_freq, self.grid.n_points))
+        self.steering_vector = self._compute_steering_vector()
+        for f in range(self.num_freq):
+            steering_vector_f = self.steering_vector[f, :, :]
+            noise_subspace_f = noise_subspace[f, :, :]
+            # Calculate the MUSIC spectrum for each angle and frequency bin
+            vector_norm_squared = np.abs(np.sum(np.conj(steering_vector_f) * steering_vector_f, axis=1))
+            noise_projection = np.abs(np.sum(
+                np.conj(steering_vector_f) @ noise_subspace_f * (noise_subspace_f.conj().T @ steering_vector_f.T).T,
+                axis=1))
+            spatial_spectrum[f, :] = vector_norm_squared / noise_projection
+        return spatial_spectrum.T
 
     def _compute_steering_vector(self, angle_step=1):
         n_channels = self.L.shape[1]

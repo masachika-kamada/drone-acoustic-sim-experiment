@@ -112,6 +112,7 @@ from .doa import *
 from .srp import *
 from .music import *
 from .gevdmusic import *
+from .gsvdmusic import *
 from .normmusic import *
 from .cssm import *
 from .waves import *
